@@ -1,4 +1,4 @@
-# SqlBro
+# SQBro
 
 เครื่องมือ SQL Server ตัวเบา ไฟล์เดียว: ดู/แก้ข้อมูลแบบ Excel, รัน SQL และ stored procedure, log พร้อม revert,
 Find in Database, และ compare ข้อมูล/โครงสร้างระหว่างสอง database พร้อมสร้าง deploy script
@@ -9,7 +9,7 @@ Find in Database, and data/structure compare with deploy-script generation.
 ## ดาวน์โหลด / Download
 
 1. ติดตั้ง / Install **[.NET 9 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/9.0)** (once per PC).
-2. โหลด / Download `SqlBro.exe` from the **[latest release](https://github.com/DialDogma/SqlBro/releases/latest)** and run it.
+2. โหลด / Download `SQBro.exe` from the **[latest release](https://github.com/DialDogma/SQBro/releases/latest)** and run it.
 
 ## อัปเดต / Updates
 
@@ -20,5 +20,5 @@ The app checks once a day (or **⚙ → Check for updates**); **⬆ Update** dow
 `version.json`, replaces the exe and restarts.
 
 ---
-repo นี้เก็บแค่ไฟล์ release (`SqlBro.exe`, `version.json`) ไม่มี source code
+repo นี้เก็บแค่ไฟล์ release (`SQBro.exe`, `version.json`) ไม่มี source code
 This repository only hosts releases; it contains no source code.
