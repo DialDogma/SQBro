@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SQBro Access</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #dfe3ea;
+    --primary: #2563eb; --primary-text: #ffffff; --good: #15803d; --warn: #b45309; --error: #c62828;
+    --warn-back: #fff7e6; --error-back: #fdecec; --good-back: #eaf7ee; --input: #ffffff; --row-off: #f1f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15181e; --card: #1d2129; --text: #e6e8ec; --muted: #98a1b2; --line: #313744;
+      --primary: #4f8cff; --primary-text: #0b1020; --good: #4ade80; --warn: #fbbf24; --error: #f87171;
+      --warn-back: #3a2e12; --error-back: #3b1d1d; --good-back: #15301f; --input: #161a21; --row-off: #191c23;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  label.check { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+  input[type=text], input[type=password], input[type=number], input[type=date], input[type=search] {
+    background: var(--input); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 9px; font: inherit; min-width: 0;
+  }
+  input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+  input.bad { border-color: var(--error); background: var(--error-back); }
+  .grow { flex: 1 1 220px; }
+  button { font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line);
+           background: var(--card); color: var(--text); }
+  button.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.link { border: none; background: none; color: var(--error); padding: 4px 6px; }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; }
+  .muted { color: var(--muted); }
+  .msg { padding: 9px 12px; border-radius: 6px; margin-top: 12px; white-space: pre-wrap; }
+  .msg.error { background: var(--error-back); color: var(--error); }
+  .msg.warn { background: var(--warn-back); color: var(--warn); }
+  .msg.good { background: var(--good-back); color: var(--good); }
+  .hidden { display: none !important; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td input[type=text], td input[type=date] { width: 100%; }
+  td.key { min-width: 230px; } td.name { min-width: 180px; } td.date { width: 150px; }
+  tr.off td { background: var(--row-off); }
+  tr.off td input { color: var(--muted); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; margin-left: 6px; }
+  .badge.new { background: var(--good-back); color: var(--good); }
+  .badge.changed { background: var(--warn-back); color: var(--warn); }
+  .counts { color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  pre { background: var(--input); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; max-height: 360px; }
+  ul.changes { margin: 8px 0 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SQBro machine access</h1>
+  <p class="sub">Edits <span class="mono">access.json</span> in <span class="mono">DialDogma/SQBro</span>. The app reads it at every
+    start and every 20 minutes; a change reaches the copies in about 5 minutes (GitHub cache). No release needed.</p>
+
+  <section class="card" id="connectCard">
+    <h2>1. Connect</h2>
+    <div class="row">
+      <label class="grow">GitHub token (fine-grained, repository DialDogma/SQBro, Contents: Read and write)
+        <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
+      </label>
+      <label class="check"><input type="checkbox" id="remember"> Remember on this browser</label>
+      <button class="primary" id="btnLoad">Load</button>
+    </div>
+    <p class="muted" style="margin:10px 0 0;font-size:12px">The token stays in this browser and is sent only to api.github.com.
+      Without "Remember" it is forgotten when the tab closes. Create one at GitHub → Settings → Developer settings →
+      Fine-grained tokens.</p>
+    <div id="connectMsg" class="msg hidden"></div>
+  </section>
+
+  <div id="editor" class="hidden">
+    <section class="card">
+      <h2>2. Settings</h2>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="requireKey"> Require a key (off = everybody may run the app)</label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label>Offline days (graceDays)<input type="number" id="graceDays" min="0" max="365" style="width:120px"></label>
+        <label>Oldest version allowed (minVersion, empty = any)<input type="text" id="minVersion" placeholder="1.3.7" style="width:200px"></label>
+        <label class="grow">Message for a machine that is not listed<input type="text" id="message"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. Machines</h2>
+      <div class="row">
+        <label class="grow">Key (paste from ⚙ → Machine key... → Copy key)
+          <input type="text" id="newKey" class="mono" spellcheck="false" placeholder="SQB-XXXX-XXXX-XXXX-XXXX"></label>
+        <label class="grow">Name (who / which PC)<input type="text" id="newName" placeholder="Somchai - office PC"></label>
+        <button class="primary" id="btnAdd">Add</button>
+      </div>
+      <div id="addMsg" class="msg hidden"></div>
+      <div class="row" style="margin:16px 0 8px;justify-content:space-between;align-items:center">
+        <span class="counts" id="counts"></span>
+        <input type="search" id="search" placeholder="Search key or name" style="width:240px">
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Key</th><th>Name</th><th>Added</th><th>Allowed</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4. Save</h2>
+      <div id="changes" class="muted">No changes.</div>
+      <div class="row" style="margin-top:12px">
+        <label class="grow">Commit message<input type="text" id="commitMsg"></label>
+        <button id="btnReload">Reload</button>
+        <button class="primary" id="btnSave" disabled>Save to GitHub</button>
+      </div>
+      <div id="saveMsg" class="msg hidden"></div>
+      <details style="margin-top:12px"><summary>access.json that will be saved</summary><pre id="preview" class="mono"></pre></details>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const REPO = "DialDogma/SQBro", PATH = "access.json", API = `https://api.github.com/repos/${REPO}/contents/${PATH}`;
+  const STORE = "sqbro-access-token";
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // same as MachineKey.Alphabet in the app
+  const $ = id => document.getElementById(id);
+
+  let sha = null, original = null, data = null, filter = "";
+
+  // ------------------------------------------------------------------ token
+  function readStored() {
+    try { return localStorage.getItem(STORE) || sessionStorage.getItem(STORE) || ""; } catch { return ""; }
+  }
+  function store(token, remember) {
+    try {
+      localStorage.removeItem(STORE); sessionStorage.removeItem(STORE);
+      (remember ? localStorage : sessionStorage).setItem(STORE, token);
+    } catch { /* storage blocked: the token is only kept in the field */ }
+  }
+  (() => {
+    const t = readStored();
+    $("token").value = t;
+    try { $("remember").checked = !!localStorage.getItem(STORE); } catch { }
+  })();
+
+  // ------------------------------------------------------------------ keys
+  /** Upper case, letters and digits only (like MachineKey.Normalize). */
+  const normalize = k => (k || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  /** "SQB" + 16 characters of the key alphabet; null when it is not a key. */
+  function canonical(k) {
+    const n = normalize(k);
+    if (n.length !== 19 || !n.startsWith("SQB")) return null;
+    const body = n.slice(3);
+    for (const c of body) if (!ALPHABET.includes(c)) return null;
+    return `SQB-${body.slice(0, 4)}-${body.slice(4, 8)}-${body.slice(8, 12)}-${body.slice(12)}`;
+  }
+  /** A key found anywhere in pasted text ("My key: SQB-ABCD-..."). */
+  function findKey(text) {
+    const m = (text || "").toUpperCase().match(/SQB[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})/);
+    return m ? canonical(m[0]) : canonical(text);
+  }
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  // ------------------------------------------------------------------ GitHub
+  function headers() {
+    return {
+      "Accept": "application/vnd.github+json",
+      "Authorization": "Bearer " + $("token").value.trim(),
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+  }
+  const fromBase64 = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), c => c.charCodeAt(0)));
+  function toBase64(text) {
+    const bytes = new TextEncoder().encode(text);
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  async function apiError(res) {
+    let detail = "";
+    try { detail = (await res.json()).message || ""; } catch { }
+    if (res.status === 401) return "The token is not valid (401). Check it, or create a new one.";
+    if (res.status === 403 || res.status === 404)
+      return `No access (${res.status}${detail ? ": " + detail : ""}). The token needs repository ${REPO} with Contents: Read and write.`;
+    if (res.status === 409) return "access.json was changed on GitHub after you loaded it. Press Reload, then make your change again.";
+    if (res.status === 422) return "GitHub refused the save (422" + (detail ? ": " + detail : "") + "). Press Reload and try again.";
+    return `GitHub answered ${res.status}${detail ? ": " + detail : ""}.`;
+  }
+
+  /** The app allows // comments and trailing commas; the saved file is plain JSON. */
+  function parseLoose(text) {
+    const noComments = text.replace(/^\s*\/\/.*$/gm, "");
+    const noTrailing = noComments.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(noTrailing);
+  }
+
+  async function load() {
+    const token = $("token").value.trim();
+    if (!token) return show("connectMsg", "error", "Paste a GitHub token first.");
+    show("connectMsg", null);
+    $("btnLoad").disabled = true;
+    try {
+      const res = await fetch(API + "?ref=main&t=" + Date.now(), { headers: headers(), cache: "no-store" });
+      if (!res.ok) return show("connectMsg", "error", await apiError(res));
+      const file = await res.json();
+      let parsed;
+      try { parsed = parseLoose(fromBase64(file.content)); }
+      catch (e) { return show("connectMsg", "error", "access.json on GitHub is not valid JSON: " + e.message); }
+      store(token, $("remember").checked);
+      sha = file.sha;
+      original = JSON.parse(JSON.stringify(parsed));
+      data = parsed;
+      data.machines = Array.isArray(data.machines) ? data.machines : [];
+      show("connectMsg", "good", `Loaded: ${data.machines.length} machine(s).`);
+      $("editor").classList.remove("hidden");
+      show("saveMsg", null);
+      fillSettings();
+      render();
+    } catch (e) {
+      show("connectMsg", "error", "Could not reach GitHub: " + e.message);
+    } finally {
+      $("btnLoad").disabled = false;
+    }
+  }
+
+  async function save() {
+    const problems = validate();
+    if (problems.length) return show("saveMsg", "error", problems.join("\n"));
+    const list = changeList();
+    if (!list.length) return show("saveMsg", "warn", "Nothing to save.");
+    if (!confirm("Save these changes to access.json?\n\n" + list.map(c => "• " + c.text).join("\n"))) return;
+    $("btnSave").disabled = true;
+    try {
+      const body = {
+        message: $("commitMsg").value.trim() || defaultCommit(list),
+        content: toBase64(output()),
+        sha,
+        branch: "main",
+      };
+      const res = await fetch(API, { method: "PUT", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) { show("saveMsg", "error", await apiError(res)); return; }
+      const result = await res.json();
+      sha = result.content.sha;
+      original = JSON.parse(JSON.stringify(data));
+      $("commitMsg").value = "";
+      show("saveMsg", "good", "Saved. Running copies pick it up within about 5 minutes (GitHub cache) or at their next 20-minute check.");
+      render();
+    } catch (e) {
+      show("saveMsg", "error", "Could not reach GitHub: " + e.message);
+    } finally {
+      updateSave();
+    }
+  }
+
+  // ------------------------------------------------------------------ the file
+  /** Plain JSON, the known fields first, any other field kept as it was. */
+  function output() {
+    const known = ["requireKey", "graceDays", "message", "minVersion", "machines"];
+    const out = {};
+    for (const k of known) if (k in data) out[k] = data[k];
+    for (const k of Object.keys(data)) if (!known.includes(k)) out[k] = data[k];
+    out.machines = data.machines.map(m => {
+      const o = { key: m.key, name: m.name || "", added: m.added || "" };
+      if (m.disabled) o.disabled = true;
+      for (const k of Object.keys(m)) if (!(k in o) && k !== "disabled") o[k] = m[k];
+      return o;
+    });
+    return "{\n" + Object.entries(out).map(([k, v]) =>
+      k === "machines"
+        ? `  "machines": [\n${v.map(m => "    " + JSON.stringify(m)).join(",\n")}\n  ]`
+        : `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(",\n") + "\n}\n";
+  }
+
+  function validate() {
+    const problems = [];
+    const seen = new Map();
+    data.machines.forEach((m, i) => {
+      const c = canonical(m.key);
+      if (!c) problems.push(`Row ${i + 1}: "${m.key}" is not a machine key (SQB-XXXX-XXXX-XXXX-XXXX).`);
+      else if (seen.has(c)) problems.push(`Row ${i + 1}: the same key as row ${seen.get(c) + 1}.`);
+      else seen.set(c, i);
+    });
+    const allowed = data.machines.filter(m => !m.disabled).length;
+    if (data.requireKey && allowed === 0) problems.push("A key is required but no machine is allowed: nobody could start the app.");
+    if (!Number.isInteger(data.graceDays) || data.graceDays < 0) problems.push("Offline days must be 0 or more.");
+    if (data.minVersion && !/^[vV]?\d+(\.\d+){0,3}$/.test(data.minVersion))
+      problems.push(`Oldest version "${data.minVersion}" is not a version number (e.g. 1.3.7).`);
+    return problems;
+  }
+
+  function changeList() {
+    const list = [];
+    if (!original) return list;
+    for (const [k, label] of [["requireKey", "Require a key"], ["graceDays", "Offline days"], ["message", "Message"], ["minVersion", "Oldest version"]])
+      if ((original[k] ?? "") !== (data[k] ?? "")) list.push({ text: `${label}: ${fmt(original[k])} → ${fmt(data[k])}` });
+    const before = new Map((original.machines || []).map(m => [canonical(m.key) || m.key, m]));
+    const after = new Map(data.machines.map(m => [canonical(m.key) || m.key, m]));
+    for (const [k, m] of after) {
+      const o = before.get(k);
+      if (!o) list.push({ text: `Add ${k} (${m.name || "no name"})`, kind: "add" });
+      else {
+        const parts = [];
+        if ((o.name || "") !== (m.name || "")) parts.push(`name "${o.name || ""}" → "${m.name || ""}"`);
+        if ((o.added || "") !== (m.added || "")) parts.push(`added ${o.added || "-"} → ${m.added || "-"}`);
+        if (!!o.disabled !== !!m.disabled) parts.push(m.disabled ? "blocked" : "allowed again");
+        if (o.key !== m.key) parts.push("key written as " + m.key);
+        if (parts.length) list.push({ text: `${k}: ${parts.join(", ")}` });
+      }
+    }
+    for (const [k, o] of before) if (!after.has(k)) list.push({ text: `Remove ${k} (${o.name || "no name"})` });
+    return list;
+  }
+  const fmt = v => v === undefined || v === null || v === "" ? "(empty)" : typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+  function defaultCommit(list) {
+    const adds = list.filter(c => c.kind === "add").length;
+    return list.length === 1 ? "access.json: " + list[0].text
+      : `access.json: ${list.length} changes` + (adds ? ` (${adds} machine(s) added)` : "");
+  }
+
+  // ------------------------------------------------------------------ UI
+  function show(id, kind, text) {
+    const el = $(id);
+    if (!kind) { el.classList.add("hidden"); return; }
+    el.className = "msg " + kind;
+    el.textContent = text;
+  }
+
+  function fillSettings() {
+    $("requireKey").checked = !!data.requireKey;
+    $("graceDays").value = data.graceDays ?? 7;
+    $("minVersion").value = data.minVersion ?? "";
+    $("message").value = data.message ?? "";
+  }
+
+  function render() {
+    const tbody = $("rows");
+    tbody.textContent = "";
+    const before = new Map((original?.machines || []).map(m => [canonical(m.key) || m.key, m]));
+    const q = filter.trim().toUpperCase();
+    const counts = new Map();
+    data.machines.forEach(m => { const c = canonical(m.key); if (c) counts.set(c, (counts.get(c) || 0) + 1); });
+    data.machines.forEach((m, i) => {
+      if (q && !(m.key || "").toUpperCase().includes(q) && !normalize(m.key).includes(normalize(q)) && !(m.name || "").toUpperCase().includes(q)) return;
+      const tr = document.createElement("tr");
+      if (m.disabled) tr.className = "off";
+      const c = canonical(m.key);
+      const o = before.get(c || m.key);
+      const state = !o ? "new" : (o.name || "") !== (m.name || "") || (o.added || "") !== (m.added || "") || !!o.disabled !== !!m.disabled || o.key !== m.key ? "changed" : "";
+
+      const key = input("text", m.key, v => { m.key = v; }, "mono");
+      key.spellcheck = false;
+      key.addEventListener("change", () => { const k = canonical(key.value); if (k) { m.key = k; } render(); });
+      if (!c || counts.get(c) > 1) { key.classList.add("bad"); key.title = !c ? "Not a machine key" : "This key is listed twice"; }
+      const tdKey = cell("key", key);
+      if (state) { const b = document.createElement("span"); b.className = "badge " + state; b.textContent = state; tdKey.appendChild(b); }
+      tr.appendChild(tdKey);
+      tr.appendChild(cell("name", input("text", m.name || "", v => { m.name = v; })));
+      tr.appendChild(cell("date", input("date", m.added || "", v => { m.added = v; })));
+      const allow = document.createElement("input");
+      allow.type = "checkbox"; allow.checked = !m.disabled; allow.title = "Unticked = blocked (kept in the list)";
+      allow.addEventListener("change", () => { m.disabled = !allow.checked; render(); });
+      tr.appendChild(cell("", allow));
+      const del = document.createElement("button");
+      del.className = "link"; del.textContent = "Remove";
+      del.addEventListener("click", () => {
+        if (!confirm(`Remove ${m.key} (${m.name || "no name"})?\nTip: untick "Allowed" instead to keep it in the list.`)) return;
+        data.machines.splice(i, 1);
+        render();
+      });
+      tr.appendChild(cell("", del));
+      tbody.appendChild(tr);
+    });
+    const allowed = data.machines.filter(m => !m.disabled).length;
+    $("counts").textContent = `${data.machines.length} machine(s), ${allowed} allowed, ${data.machines.length - allowed} blocked`;
+    updateSave();
+  }
+
+  function input(type, value, set, cls) {
+    const el = document.createElement("input");
+    el.type = type; el.value = value;
+    if (cls) el.className = cls;
+    el.addEventListener("input", () => { set(el.value); updateSave(); });
+    return el;
+  }
+  function cell(cls, child) {
+    const td = document.createElement("td");
+    if (cls) td.className = cls;
+    td.appendChild(child);
+    return td;
+  }
+
+  function updateSave() {
+    if (!data) return;
+    const list = changeList();
+    const problems = validate();
+    const box = $("changes");
+    box.textContent = "";
+    if (!list.length) { box.className = "muted"; box.textContent = "No changes."; }
+    else {
+      box.className = "";
+      const p = document.createElement("div");
+      p.textContent = `${list.length} change(s) not saved yet:`;
+      const ul = document.createElement("ul");
+      ul.className = "changes";
+      for (const c of list) { const li = document.createElement("li"); li.textContent = c.text; ul.appendChild(li); }
+      box.append(p, ul);
+    }
+    if (problems.length) show("saveMsg", "error", problems.join("\n"));
+    else if ($("saveMsg").classList.contains("error")) show("saveMsg", null);
+    $("btnSave").disabled = !list.length || problems.length > 0;
+    $("commitMsg").placeholder = list.length ? defaultCommit(list) : "";
+    $("preview").textContent = output();
+  }
+
+  function addMachine() {
+    const key = findKey($("newKey").value);
+    if (!key) return show("addMsg", "error", "That is not a machine key. It looks like SQB-XXXX-XXXX-XXXX-XXXX (⚙ → Machine key... → Copy key).");
+    const existing = data.machines.find(m => canonical(m.key) === key);
+    if (existing) {
+      if (existing.disabled) {
+        if (confirm(`${key} is already listed (${existing.name || "no name"}) but blocked. Allow it again?`)) { existing.disabled = false; render(); }
+      } else show("addMsg", "warn", `${key} is already listed (${existing.name || "no name"}).`);
+      return;
+    }
+    data.machines.push({ key, name: $("newName").value.trim(), added: today() });
+    $("newKey").value = ""; $("newName").value = "";
+    show("addMsg", "good", `Added ${key}. Press "Save to GitHub" to apply.`);
+    render();
+    $("newKey").focus();
+  }
+
+  // ------------------------------------------------------------------ events
+  $("btnLoad").addEventListener("click", load);
+  $("token").addEventListener("keydown", e => { if (e.key === "Enter") load(); });
+  $("remember").addEventListener("change", () => { const t = $("token").value.trim(); if (t && sha) store(t, $("remember").checked); });
+  $("btnAdd").addEventListener("click", addMachine);
+  for (const id of ["newKey", "newName"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") addMachine(); });
+  $("search").addEventListener("input", e => { filter = e.target.value; render(); });
+  $("requireKey").addEventListener("change", e => { data.requireKey = e.target.checked; updateSave(); });
+  $("graceDays").addEventListener("input", e => { const n = Number(e.target.value); data.graceDays = e.target.value === "" ? NaN : n; updateSave(); });
+  $("minVersion").addEventListener("input", e => { data.minVersion = e.target.value.trim(); updateSave(); });
+  $("message").addEventListener("input", e => { data.message = e.target.value; updateSave(); });
+  $("btnSave").addEventListener("click", save);
+  $("btnReload").addEventListener("click", () => {
+    if (changeList().length && !confirm("Throw away the changes that are not saved?")) return;
+    load();
+  });
+  window.addEventListener("beforeunload", e => { if (data && changeList().length) { e.preventDefault(); e.returnValue = ""; } });
+  if ($("token").value) load();
+})();
+</script>
+</body>
+</html>
