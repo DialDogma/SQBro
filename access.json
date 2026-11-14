@@ -3,5 +3,5 @@
   "graceDays": 7,
   "message": "Send your machine key (menu ⚙ → Machine key... → Copy key) to the SQBro admin.",
   "machines": [ { "key": "SQB-8HNG-FA3M-WZRU-MTWY", "name": "Admin - my PC","added": "2026-11-14" },
-  { "key": "SQB-MRXE-KUR9-LWF3-ZASB", "name": "USER- P'KO ","added": "2026-11-14"}]
+  { "key": "SQB-MRXE-KUR9-LWF3-ZASB", "name": "USER - P'KO ","added": "2026-11-14"}]
 }
