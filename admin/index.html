@@ -62,6 +62,13 @@
   details summary { cursor: pointer; color: var(--muted); }
   pre { background: var(--input); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; max-height: 360px; }
   ul.changes { margin: 8px 0 0; padding-left: 20px; }
+  /* In-page confirm box: window.confirm() is blocked in some browsers / embedded views and returns false at once. */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center;
+             padding: 16px; z-index: 10; }
+  .dialog { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 18px;
+            width: 100%; max-width: 520px; max-height: 80vh; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .dialog p { margin: 0 0 8px; white-space: pre-wrap; }
+  .dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -133,6 +140,18 @@
   </div>
 </main>
 
+<div id="askBox" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+  <div class="dialog">
+    <h2 id="askTitle"></h2>
+    <p id="askText"></p>
+    <ul id="askList" class="changes hidden"></ul>
+    <div class="buttons">
+      <button id="askNo">Cancel</button>
+      <button class="primary" id="askYes">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   "use strict";
@@ -141,7 +160,47 @@
   const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // same as MachineKey.Alphabet in the app
   const $ = id => document.getElementById(id);
 
-  let sha = null, original = null, data = null, filter = "";
+  let sha = null, original = null, data = null, filter = "", saving = false;
+  const TIMEOUT_MS = 30000;
+
+  // ------------------------------------------------------------------ in-page confirm
+  /** Resolves true on OK, false on Cancel / Esc / click outside. Replaces window.confirm(), which some
+   *  browsers and embedded views block (it returns false at once, so the button seemed to do nothing). */
+  function ask(title, text, okLabel, items) {
+    return new Promise(resolve => {
+      const box = $("askBox");
+      $("askTitle").textContent = title;
+      $("askText").textContent = text || "";
+      $("askText").classList.toggle("hidden", !text);
+      const ul = $("askList");
+      ul.textContent = "";
+      for (const t of items || []) { const li = document.createElement("li"); li.textContent = t; ul.appendChild(li); }
+      ul.classList.toggle("hidden", !(items && items.length));
+      $("askYes").textContent = okLabel || "OK";
+      const last = document.activeElement;
+      const done = ok => {
+        box.classList.add("hidden");
+        $("askYes").onclick = $("askNo").onclick = box.onclick = document.onkeydown = null;
+        if (last && last.focus) last.focus();
+        resolve(ok);
+      };
+      $("askYes").onclick = () => done(true);
+      $("askNo").onclick = () => done(false);
+      box.onclick = e => { if (e.target === box) done(false); };
+      document.onkeydown = e => { if (e.key === "Escape") done(false); };
+      box.classList.remove("hidden");
+      $("askYes").focus();
+    });
+  }
+
+  /** fetch with a time limit, so a stuck request ends with a message instead of a frozen button. */
+  async function fetchTimed(url, options) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+    try { return await fetch(url, { ...options, signal: ctl.signal }); }
+    catch (e) { throw e.name === "AbortError" ? new Error(`no answer after ${TIMEOUT_MS / 1000} seconds`) : e; }
+    finally { clearTimeout(timer); }
+  }
 
   // ------------------------------------------------------------------ token
   function readStored() {
@@ -175,7 +234,8 @@
     const m = (text || "").toUpperCase().match(/SQB[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})[-\s]*([A-Z0-9]{4})/);
     return m ? canonical(m[0]) : canonical(text);
   }
-  const today = () => new Date().toISOString().slice(0, 10);
+  /** Local date (toISOString is UTC: before 07:00 in Thailand it gave yesterday). */
+  const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 
   // ------------------------------------------------------------------ GitHub
   function headers() {
@@ -216,7 +276,7 @@
     show("connectMsg", null);
     $("btnLoad").disabled = true;
     try {
-      const res = await fetch(API + "?ref=main&t=" + Date.now(), { headers: headers(), cache: "no-store" });
+      const res = await fetchTimed(API + "?ref=main&t=" + Date.now(), { headers: headers(), cache: "no-store" });
       if (!res.ok) return show("connectMsg", "error", await apiError(res));
       const file = await res.json();
       let parsed;
@@ -244,8 +304,12 @@
     if (problems.length) return show("saveMsg", "error", problems.join("\n"));
     const list = changeList();
     if (!list.length) return show("saveMsg", "warn", "Nothing to save.");
-    if (!confirm("Save these changes to access.json?\n\n" + list.map(c => "• " + c.text).join("\n"))) return;
+    if (saving) return;
+    if (!await ask("Save to GitHub?", "These changes will be written to access.json:", "Save", list.map(c => c.text))) return;
+    saving = true;
     $("btnSave").disabled = true;
+    $("btnSave").textContent = "Saving...";
+    show("saveMsg", "warn", "Saving to GitHub...");
     try {
       const body = {
         message: $("commitMsg").value.trim() || defaultCommit(list),
@@ -253,18 +317,21 @@
         sha,
         branch: "main",
       };
-      const res = await fetch(API, { method: "PUT", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetchTimed(API, { method: "PUT", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) { show("saveMsg", "error", await apiError(res)); return; }
       const result = await res.json();
       sha = result.content.sha;
       original = JSON.parse(JSON.stringify(data));
       $("commitMsg").value = "";
-      show("saveMsg", "good", "Saved. Running copies pick it up within about 5 minutes (GitHub cache) or at their next 20-minute check.");
       render();
+      show("saveMsg", "good", "Saved. Running copies pick it up within about 5 minutes (GitHub cache) or at their next 20-minute check.");
     } catch (e) {
       show("saveMsg", "error", "Could not reach GitHub: " + e.message);
     } finally {
+      saving = false;
+      $("btnSave").textContent = "Save to GitHub";
       updateSave();
+      $("saveMsg").scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
 
@@ -378,8 +445,8 @@
       tr.appendChild(cell("", allow));
       const del = document.createElement("button");
       del.className = "link"; del.textContent = "Remove";
-      del.addEventListener("click", () => {
-        if (!confirm(`Remove ${m.key} (${m.name || "no name"})?\nTip: untick "Allowed" instead to keep it in the list.`)) return;
+      del.addEventListener("click", async () => {
+        if (!await ask("Remove this machine?", `${m.key} (${m.name || "no name"})\nTip: untick "Allowed" instead to keep it in the list.`, "Remove")) return;
         data.machines.splice(i, 1);
         render();
       });
@@ -423,24 +490,28 @@
     }
     if (problems.length) show("saveMsg", "error", problems.join("\n"));
     else if ($("saveMsg").classList.contains("error")) show("saveMsg", null);
-    $("btnSave").disabled = !list.length || problems.length > 0;
+    $("btnSave").disabled = saving || !list.length || problems.length > 0;
     $("commitMsg").placeholder = list.length ? defaultCommit(list) : "";
     $("preview").textContent = output();
   }
 
-  function addMachine() {
+  async function addMachine() {
     const key = findKey($("newKey").value);
     if (!key) return show("addMsg", "error", "That is not a machine key. It looks like SQB-XXXX-XXXX-XXXX-XXXX (⚙ → Machine key... → Copy key).");
     const existing = data.machines.find(m => canonical(m.key) === key);
     if (existing) {
       if (existing.disabled) {
-        if (confirm(`${key} is already listed (${existing.name || "no name"}) but blocked. Allow it again?`)) { existing.disabled = false; render(); }
+        if (await ask("Allow it again?", `${key} is already listed (${existing.name || "no name"}) but blocked.`, "Allow")) {
+          existing.disabled = false;
+          render();
+          show("addMsg", "good", `${key} is allowed again. Press "Save to GitHub" below to apply.`);
+        }
       } else show("addMsg", "warn", `${key} is already listed (${existing.name || "no name"}).`);
       return;
     }
     data.machines.push({ key, name: $("newName").value.trim(), added: today() });
     $("newKey").value = ""; $("newName").value = "";
-    show("addMsg", "good", `Added ${key}. Press "Save to GitHub" to apply.`);
+    show("addMsg", "good", `Added ${key}. Not saved yet: press "Save to GitHub" below to apply.`);
     render();
     $("newKey").focus();
   }
@@ -457,8 +528,8 @@
   $("minVersion").addEventListener("input", e => { data.minVersion = e.target.value.trim(); updateSave(); });
   $("message").addEventListener("input", e => { data.message = e.target.value; updateSave(); });
   $("btnSave").addEventListener("click", save);
-  $("btnReload").addEventListener("click", () => {
-    if (changeList().length && !confirm("Throw away the changes that are not saved?")) return;
+  $("btnReload").addEventListener("click", async () => {
+    if (changeList().length && !await ask("Reload from GitHub?", "The changes that are not saved will be thrown away.", "Reload")) return;
     load();
   });
   window.addEventListener("beforeunload", e => { if (data && changeList().length) { e.preventDefault(); e.returnValue = ""; } });
